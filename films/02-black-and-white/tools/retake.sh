@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 ids=${1:?usage: tools/retake.sh <id[,id…]>}
 npm run build --silent
 node tools/render.mjs stills "${ids%%,*}" 2,6,10,14,18          # quick contact sheet → build/stills/
+node tools/motioncheck.mjs "$ids"                              # per-frame motion check → build/motion/ (read the flags!)
 if [ -n "$MUSIC" ]; then node tools/render.mjs audio && python3 tools/audio.py && npm run build --silent; fi
 node tools/render.mjs video "$ids" 2
 node tools/render.mjs video outro 1                            # outro prints code stats, keep it current

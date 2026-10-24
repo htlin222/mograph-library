@@ -24,6 +24,7 @@ tools/
   glyphs.py        從 Archivo 可變字型抽出字母外框（章節卡大數字用）
   master.sh        依時間軸串接全部段落 + 混入配樂 → dist/bw-master.mp4
   retake.sh        單段重拍：改完 eNN.js 後一行指令重算該段與總片
+  motioncheck.mjs  逐格動態檢查：突跳、一格閃爍、循環接縫
   standalone.mjs   把段落輸出成帶自己配樂的獨立影片（CI 也用它）
   plan.py          CI 用：從 git diff 判斷要重算哪些段
   gain.json        總片校正出的配樂增益
@@ -53,7 +54,10 @@ npm run all          # build → 合成配樂並校正響度 → 再 build（帶
 1. 改 `src/scenes/e17.js`（畫面在 `frame()`，說明文字在 `prompt` / `how` / `practice`，音效在 `cues`）
 2. 先在瀏覽器看：`npm run build`，打開 `dist/index.html`，用播放器跳到該段
 3. 出縮圖確認：`node tools/render.mjs stills e17 2,6,10,14,18` → `build/stills/e17_sheet.jpg`
-4. 重算並更新總片：
+4. **檢查動態**（縮圖看不出抖動）：`node tools/motioncheck.mjs e17` → `build/motion/e17.png`
+   逐格算出舞台的變化量，標出「整個畫面突跳」（pop）和「某一區只存在一格」（blip）。章節切換造成的 pop 是正常的；
+   落地瞬間的那一格壓扁也會被標成 blip——對照時間點判斷，其餘都要修。
+5. 重算並更新總片：
 
 ```bash
 tools/retake.sh e17              # 一段
@@ -68,6 +72,8 @@ MUSIC=1 tools/retake.sh e17      # 改了 cues 或節拍時，連配樂一起重
 - `frame` 必須每次畫滿整個舞台、只依賴 `t`（不能依賴上一格），否則跳格預覽與平行算圖會不一致。
 - 模擬類（物理、反應擴散、粒子）用 `M.sim(this, t, step, hz)`，固定步長、倒帶自動重置。
 - 全片保證只有灰階：引擎會在每格做一次去彩度，所以顏色不會漏進成片。
+- 會彈跳、會落地的東西，形變要是「離接觸點距離」的連續函數，不要用「空中／落地」兩種模式硬切；接觸點要對齊到某一格；
+  循環重播前所有東西都要停穩（e01、e04、e05 是範例）。
 - 說明面板空間固定：Prompt 最多 4 行、做法以 3 條為準，改完請看縮圖確認沒有溢出。
 
 ## 獨立的 72 部影片（GitHub Actions）

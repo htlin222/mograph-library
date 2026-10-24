@@ -1,28 +1,41 @@
-/* 05 預備、跟隨與重疊 — a block character crouches, jumps, lands; its antenna and tail are Verlet
+/* 05 預備、跟隨與重疊 — a block character crouches, jumps, lands; its antenna and tail are angular-spring
    chains that lag behind (overlap / follow-through). Compare without anticipation, without follow-through;
    payoff: a somersault with antenna onion skins. Dark ground. */
 const GROUND = 810, CYC = 4;
 const T_CROUCH = 0.55, T_LAUNCH = 1.2, AIR = 0.9, T_LAND = T_LAUNCH + AIR;
 
-/* body pose for cycle time u; v = { antic, flip, H } */
+/* body pose for cycle time u; v = { antic, flip, H }.
+   Every channel (height, squash, lean, spin) is continuous in time — no value jumps between frames:
+   · the stretch happens on the ground during a 3-frame push-off, so the body leaves the floor already long
+   · landing starts from the in-air shape and its squash/settle is a damped spring that begins at that value
+   (verified with tools/motioncheck.mjs and the per-frame probe in the commit that introduced this) */
+const PUSH = 0.14;                                         // push-off: ~4 frames, feet still on the ground
+const breath = u => 1 + 0.015 * Math.sin(u * TAU * 1.5) * (1 - smooth(T_CROUCH - 0.25, T_CROUCH, u));
+function airPose(p, v) {                                   // p = 0…1 through the flight
+  const s0 = v.antic ? 0.26 : 0.1, l0 = v.antic ? 0.12 : 0.04;
+  return {
+    sy: 1 + s0 * Math.exp(-p * 7) + 0.08 * smooth(0.55, 1, p),          // launch stretch decays, falling stretch builds
+    lean: l0 * Math.exp(-p * 5) - 0.06 * smooth(0.6, 1, p),
+  };
+}
 function pose(u, v) {
   let h = 0, sy = 1, lean = 0, spin = 0;
-  sy = 1 + 0.015 * Math.sin(u * TAU * 1.5);
-  if (v.antic && u >= T_CROUCH && u < T_LAUNCH) {
-    const c = ease(E.inOutCubic, T_CROUCH, T_LAUNCH - 0.1, u);
-    sy = lerp(1, 0.8, c); lean = -0.1 * c;
-  }
-  if (u >= T_LAUNCH && u < T_LAND) {
-    const p = (u - T_LAUNCH) / AIR;
-    h = v.H * 4 * p * (1 - p);
-    sy = 1 + (v.antic ? 0.32 : 0.12) * Math.exp(-p * 9) + 0.1 * smooth(0.75, 1, p);
-    lean = (v.antic ? 0.12 : 0.04) * Math.exp(-p * 5) - 0.06 * smooth(0.6, 1, p);
+  const crouchSy = v.antic ? 0.8 : 1, crouchLean = v.antic ? -0.1 : 0;
+  if (u < T_LAUNCH - PUSH) {                                // idle → crouch (eased, then held)
+    const c = v.antic ? ease(E.inOutCubic, T_CROUCH, T_LAUNCH - PUSH - 0.08, u) : 0;
+    sy = lerp(breath(u), crouchSy, c); lean = crouchLean * c;
+  } else if (u < T_LAUNCH) {                                // push-off: crouch → launch shape, on the ground
+    const k = smooth(T_LAUNCH - PUSH, T_LAUNCH, u), A = airPose(0, v);
+    sy = lerp(crouchSy, A.sy, k); lean = lerp(crouchLean, A.lean, k);
+  } else if (u < T_LAND) {                                  // flight
+    const p = (u - T_LAUNCH) / AIR, A = airPose(p, v);
+    h = v.H * 4 * p * (1 - p); sy = A.sy; lean = A.lean;
     if (v.flip) spin = -TAU * E.inOutCubic(clamp((p - 0.08) / 0.8));
-  }
-  if (u >= T_LAND) {
-    const tt = u - T_LAND;
-    sy = 1 - 0.3 * Math.exp(-6 * tt) * Math.cos(14 * tt);
-    lean = 0.06 * Math.exp(-5 * tt) * Math.sin(12 * tt);
+  } else {                                                  // landing: damped spring from the arrival shape
+    const tt = u - T_LAND, A = airPose(1, v), w = 14, dk = Math.exp(-6 * tt);
+    const x0 = A.sy - 1;                                    // arrives stretched, impact drives it into a squash
+    sy = 1 + dk * (x0 * Math.cos(w * tt) - (0.42 + x0 * 6 / w) * Math.sin(w * tt));
+    lean = Math.exp(-5 * tt) * (A.lean * Math.cos(12 * tt) + 0.06 * Math.sin(12 * tt));
   }
   return { h, sx: Math.pow(sy, -0.4), sy, lean, spin };       // keep some volume
 }
@@ -55,51 +68,70 @@ function frameOf(I, t) {
   return { P, v, sc, bw, bh, X, Y, cy, world, ang };
 }
 
-const CH = {                                   // chains in body-local terms
-  ant: { n: 6, len: 24, at: [0.12, -1], dir: [0.15, -1], k: 0.1 },
-  tail: { n: 6, len: 18, at: [-0.46, -0.22], dir: [-1, -0.7], k: 0.07 },
+/* chains in body-local terms. Each segment is an angular spring hinged on its parent (not free Verlet points):
+   it is pulled toward its parent's angle (segment 0: toward the body), damped relative to the parent, and pushed by
+   the inertia of its moving pivot — so the follow-through is one smooth wave down the chain, with no zigzag and no
+   stretching. f = natural frequency (Hz), z = damping ratio, both softer toward the tip. */
+const CH = {
+  ant: { n: 6, len: 24, at: [0.12, -1], dir: [0.15, -1], f: 3.6, z: 0.4, g: 0, bend: 0.55 },
+  tail: { n: 6, len: 18, at: [-0.46, -0.22], dir: [-1, -0.7], f: 3.0, z: 0.45, g: 120, bend: 0.45 },
 };
-function restDir(c, ang) { const l = Math.hypot(c.dir[0], c.dir[1]), dx = c.dir[0] / l, dy = c.dir[1] / l; return [dx * Math.cos(ang) - dy * Math.sin(ang), dx * Math.sin(ang) + dy * Math.cos(ang)]; }
+const restAng = c => Math.atan2(c.dir[1], c.dir[0]);
+const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
+const SIM_HZ = 240, W_MAX = 18, INERTIA = 0.4, A_SMOOTH = 0.25; // stylised inertia; pivot acceleration low-passed (~4 steps)
+function chainState(I, Fm, key) {
+  const c = CH[key], L = c.len * I.sc, a = Fm.world(c.at[0] * BW * I.sc, c.at[1] * BH * I.sc), phi = restAng(c) + Fm.ang;
+  return { phi: Array(c.n - 1).fill(phi), w: Array(c.n - 1).fill(0), base: a, vb: [0, 0], L,
+    pts: [...Array(c.n)].map((_, i) => ({ x: a[0] + Math.cos(phi) * L * i, y: a[1] + Math.sin(phi) * L * i })) };
+}
 
 const S = M.def({
   id: 'e05', num: 5, ch: 1, title: '預備、跟隨與重疊', en: 'ANTICIPATION & FOLLOW-THROUGH', dur: 20, ground: 'dark',
   prompt: '一個方塊角色每 4 秒跳一次：先蹲 0.6 秒蓄力、後仰，起跳拉長，落地壓扁再回彈；頭上天線、身後尾巴用彈簧鏈延遲跟隨。並排比較「沒有預備」和「沒有跟隨」，最後空翻一圈，畫出天線尖端的軌跡。黑底白色角色。',
-  how: ['身體 = 手寫關鍵姿勢：蹲 sy 0.8 → 拉長 1.32 → 壓扁 0.7', '天線、尾巴：Verlet 鏈 + 跟隨領導者長度約束，120 Hz', '每節往靜止方向回拉 k ≈ 0.1，越靠末端越晚到 = 重疊'],
+  how: ['身體 = 連續的姿勢曲線：蹲 0.8 → 地面蹬伸 1.26 → 落地彈簧壓扁 0.76', '天線、尾巴：每節是掛在上一節的角彈簧，受支點加速度推動，240 Hz', '越靠末端越軟（3 Hz、阻尼 0.32），越晚到 = 重疊'],
   practice: '讓角色停下時，天線比身體晚 3 格才靜止。',
   cues: [0, 4, 8, 12, 16].flatMap(c => [{ t: c + T_LAUNCH, type: 'whoosh', dur: 0.35, v: 0.45 }, { t: c + T_LAND, type: 'thud', v: 0.8 }]),
 
   reset() {
     this.st = INST.map(I => {
-      const F0 = frameOf(I, 0), o = {};
-      for (const key in CH) {
-        const c = CH[key], a = F0.world(c.at[0] * BW * I.sc, c.at[1] * BH * I.sc), d = restDir(c, F0.ang);
-        o[key] = [...Array(c.n)].map((_, i) => { const x = a[0] + d[0] * c.len * I.sc * i, y = a[1] + d[1] * c.len * I.sc * i; return { x, y, px: x, py: y }; });
-      }
-      o.hist = []; return o;
+      const F0 = frameOf(I, 0), o = { ang: F0.ang, hist: [] };
+      for (const key in CH) o[key] = chainState(I, F0, key);
+      return o;
     });
   },
   step(dt, n, T) {
     INST.forEach((I, ii) => {
-      const Fm = frameOf(I, T), o = this.st[ii];
+      const Fm = frameOf(I, T + dt), o = this.st[ii];
+      const wBody = wrapPi(Fm.ang - o.ang) / dt; o.ang = Fm.ang;
       for (const key in CH) {
-        const c = CH[key], pts = o[key], L = c.len * I.sc;
-        const a = Fm.world(c.at[0] * BW * I.sc, c.at[1] * BH * I.sc), d = restDir(c, Fm.ang);
-        pts[0].x = a[0]; pts[0].y = a[1];
-        for (let i = 1; i < pts.length; i++) {
-          const p = pts[i];
-          const vx = (p.x - p.px) * 0.975, vy = (p.y - p.py) * 0.975;
-          p.px = p.x; p.py = p.y; p.x += vx; p.y += vy + 500 * dt * dt;
-          // pull toward the rest pose relative to its parent (softer toward the tip)
-          const k = c.k * (1 - 0.45 * i / pts.length);
-          const tx = pts[i - 1].x + d[0] * L, ty = pts[i - 1].y + d[1] * L;
-          p.x += (tx - p.x) * k; p.y += (ty - p.y) * k;
+        const c = CH[key], C = o[key], L = C.L, m = C.phi.length;
+        // pivot of segment 0 = the attachment point on the body; its acceleration drives the whole chain
+        const base = Fm.world(c.at[0] * BW * I.sc, c.at[1] * BH * I.sc);
+        const vb = [(base[0] - C.base[0]) / dt, (base[1] - C.base[1]) / dt];
+        // the body's launch / landing is a velocity step: low-pass its acceleration so it reads as a shove, not a spike
+        C.ab = C.ab || [0, 0];
+        C.ab = [lerp(C.ab[0], (vb[0] - C.vb[0]) / dt, A_SMOOTH), lerp(C.ab[1], (vb[1] - C.vb[1]) / dt, A_SMOOTH)];
+        let A = [C.ab[0] * INERTIA, C.ab[1] * INERTIA];
+        C.base = base; C.vb = vb;
+        let parentPhi = restAng(c) + Fm.ang, parentW = wBody;
+        for (let i = 0; i < m; i++) {
+          const soft = 1 - 0.45 * i / m, wn = TAU * c.f * soft, k = wn * wn, cd = 2 * c.z * wn;
+          const dx = Math.cos(C.phi[i]), dy = Math.sin(C.phi[i]);
+          const inertial = -(dx * A[1] - dy * A[0]) / L + c.g * dx / L;          // pivot acceleration + gravity
+          const acc = -k * wrapPi(C.phi[i] - parentPhi) - cd * (C.w[i] - parentW) + inertial;
+          C.w[i] = clamp(C.w[i] + acc * dt, -W_MAX, W_MAX);
+          C.phi[i] += C.w[i] * dt;
+          const rel = wrapPi(C.phi[i] - parentPhi);                                // joint limit: bends, never coils
+          if (Math.abs(rel) > c.bend) { C.phi[i] = parentPhi + Math.sign(rel) * c.bend; C.w[i] = parentW; }
+          // acceleration of the next pivot (tip of this segment): A + angular (tangential + centripetal) terms
+          const nx = Math.cos(C.phi[i]), ny = Math.sin(C.phi[i]);
+          A = [A[0] + L * (-ny * acc - nx * C.w[i] * C.w[i]), A[1] + L * (nx * acc - ny * C.w[i] * C.w[i])];
+          parentPhi = C.phi[i]; parentW = C.w[i];
         }
-        for (let i = 1; i < pts.length; i++) {          // follow-the-leader length constraint
-          const p = pts[i], q = pts[i - 1], dx = p.x - q.x, dy = p.y - q.y, l = Math.hypot(dx, dy) || 1;
-          p.x = q.x + dx / l * L; p.y = q.y + dy / l * L;
-        }
+        let x = base[0], y = base[1]; C.pts[0].x = x; C.pts[0].y = y;
+        for (let i = 0; i < m; i++) { x += Math.cos(C.phi[i]) * L; y += Math.sin(C.phi[i]) * L; C.pts[i + 1].x = x; C.pts[i + 1].y = y; }
       }
-      if (n % 2 === 0) { const tp = o.ant[o.ant.length - 1]; o.hist.push([tp.x, tp.y]); if (o.hist.length > 24) o.hist.shift(); }
+      if (n % 4 === 0) { const tp = o.ant.pts[o.ant.pts.length - 1]; o.hist.push([tp.x, tp.y]); if (o.hist.length > 24) o.hist.shift(); }
     });
   },
 
@@ -112,9 +144,9 @@ const S = M.def({
     // chains (rigid variant: drawn straight along the rest direction)
     const chainPts = key => {
       const c = CH[key];
-      if (!rigid) return o[key].map(p => [p.x, p.y]);
-      const a = Fm.world(c.at[0] * BW * sc, c.at[1] * BH * sc), d = restDir(c, Fm.ang);
-      return [...Array(c.n)].map((_, i) => [a[0] + d[0] * c.len * sc * i, a[1] + d[1] * c.len * sc * i]);
+      if (!rigid) return o[key].pts.map(p => [p.x, p.y]);
+      const a = Fm.world(c.at[0] * BW * sc, c.at[1] * BH * sc), phi = restAng(c) + Fm.ang;
+      return [...Array(c.n)].map((_, i) => [a[0] + Math.cos(phi) * c.len * sc * i, a[1] + Math.sin(phi) * c.len * sc * i]);
     };
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = fg(1); ctx.fillStyle = fg(1);
     const tail = chainPts('tail');
@@ -153,7 +185,7 @@ const S = M.def({
   },
 
   frame(ctx, t) {
-    M.sim(S, t, (dt, n, T) => this.step(dt, n, T), 120);
+    M.sim(S, t, (dt, n, T) => this.step(dt, n, T), SIM_HZ);
     ctx.fillStyle = fg(0.9); ctx.fillRect(40, GROUND, SW - 80, 2);
     // header
     const hdr = t < 4 ? ['一次完整的跳躍', 'CROUCH · JUMP · LAND · SETTLE'] : t < 8 ? ['左：沒有預備', 'NO ANTICIPATION vs FULL'] : t < 12 ? ['左：沒有跟隨', 'RIGID ANTENNA vs SPRING CHAIN'] : t < 16 ? ['重疊：末端最晚到', 'OVERLAPPING ACTION'] : ['空翻：同一套鏈', 'SAME CHAINS, MORE ENERGY'];
