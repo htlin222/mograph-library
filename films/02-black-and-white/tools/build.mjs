@@ -17,7 +17,8 @@ const sceneSrc = sceneFiles.map(f => {
 
 const hand = ['src/engine.js', 'src/curriculum.js', 'src/music.js', 'src/page.html', ...sceneFiles.map(f => 'src/scenes/' + f)];
 const STATS = { chars: hand.reduce((a, f) => a + R(f).length, 0), lines: hand.reduce((a, f) => a + R(f).split('\n').length, 0), scenes: sceneFiles.length };
-const gain = fs.existsSync('build/gain.json') ? JSON.parse(R('build/gain.json')).gain : 1;
+const gainFile = ['build/gain.json', 'tools/gain.json'].find(f => fs.existsSync(f));
+const gain = gainFile ? JSON.parse(R(gainFile)).gain : 1;
 const engine = R('src/engine.js').replace('/*GLYPHS_JSON*/null', R('build/glyphs.json'));
 const app = [engine, `M.STATS = ${JSON.stringify(STATS)};`, R('src/curriculum.js'), R('src/music.js'), `MUS.LIVE_GAIN = ${gain};`, sceneSrc].join('\n\n');
 

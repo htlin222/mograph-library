@@ -11,7 +11,7 @@
 | [`films/01-motion-in-code/`](films/01-motion-in-code/) | 《Motion, in Code》：12 種技法 × 6 秒，約 84 秒 |
 | [`films/02-black-and-white/`](films/02-black-and-white/) | 《黑白動態全書》：只用黑白示範 72 種技法 × 20 秒，附 Prompt／做法／練習，約 24 分 50 秒 |
 
-成片 MP4 不進 git（檔案太大）；所有影片都能用各資料夾的指令從原始碼重新算出。
+成片 MP4 不進 git。黑白動態全書的 72 段由 GitHub Actions 自動算成獨立影片，放在 Releases 的 [segments](../../releases/tag/segments)；改了哪段、push 後就自動重拍哪段。
 
 ## 共同做法
 

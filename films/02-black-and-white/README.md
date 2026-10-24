@@ -24,6 +24,9 @@ tools/
   glyphs.py        從 Archivo 可變字型抽出字母外框（章節卡大數字用）
   master.sh        依時間軸串接全部段落 + 混入配樂 → dist/bw-master.mp4
   retake.sh        單段重拍：改完 eNN.js 後一行指令重算該段與總片
+  standalone.mjs   把段落輸出成帶自己配樂的獨立影片（CI 也用它）
+  plan.py          CI 用：從 git diff 判斷要重算哪些段
+  gain.json        總片校正出的配樂增益
 catalog/           72 段的 Prompt / 做法 / 練習（catalog.json 與各章 markdown 表）
 CONTRACT.md        場景 API 與 72 個概念的規格（寫新段落或交給 AI 改之前先讀）
 ```
@@ -66,6 +69,16 @@ MUSIC=1 tools/retake.sh e17      # 改了 cues 或節拍時，連配樂一起重
 - 模擬類（物理、反應擴散、粒子）用 `M.sim(this, t, step, hz)`，固定步長、倒帶自動重置。
 - 全片保證只有灰階：引擎會在每格做一次去彩度，所以顏色不會漏進成片。
 - 說明面板空間固定：Prompt 最多 4 行、做法以 3 條為準，改完請看縮圖確認沒有溢出。
+
+## 獨立的 72 部影片（GitHub Actions）
+
+[`.github/workflows/render-segments.yml`](../../.github/workflows/render-segments.yml) 把每一段算成一部獨立的 20 秒影片：畫面加上它自己那 20 秒的配樂（沿用總片的 −14 LUFS 增益，`tools/gain.json`），檔名像 `e01-timing-and-spacing.mp4`，放在 Releases 的 **segments**。
+
+- **改了某段就自動重拍**：push 到 main 時，改了 `src/scenes/e17.js` 只重算 e17；改了引擎、配樂或工具（`engine.js`、`music.js`、`tools/*` 等）就重算全部 72 段。同一段的舊檔會被覆蓋。
+- **手動**：Actions → Render segments → Run workflow，填 `all` 或 `e01,e17`。
+- 每段一個 job、最多 20 個同時跑；每個 job 另外留一張縮圖表（artifact，保留 30 天），方便在手機上檢查。
+
+本機做同一件事：`node tools/standalone.mjs e17`（或 `all`）→ `dist/segments/`。
 
 ## 72 段索引
 

@@ -1,0 +1,133 @@
+# Render the 72 black-and-white segments as standalone films (picture + their own soundtrack).
+#  · push to main that touches films/02-black-and-white → only the changed segments
+#    (src/scenes/eNN.js → eNN; engine / music / tools → all 72), published to the "segments" release
+#  · Actions → "Render segments" → Run workflow → pick ids (all, or e.g. e01,e17) and whether to publish
+name: Render segments
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'films/02-black-and-white/src/**'
+      - 'films/02-black-and-white/tools/**'
+      - 'films/02-black-and-white/package*.json'
+  workflow_dispatch:
+    inputs:
+      segments:
+        description: 'all, or comma-separated ids (e01,e17)'
+        default: 'all'
+      publish:
+        description: 'Upload to the "segments" release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-segments-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: films/02-black-and-white
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      ids: ${{ steps.plan.outputs.ids }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          SEGMENTS: ${{ inputs.segments }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          if [ "$EVENT" = push ]; then
+            ids=$(python3 films/02-black-and-white/tools/plan.py --diff "$BEFORE" "$AFTER")
+          else
+            ids=$(python3 films/02-black-and-white/tools/plan.py "$SEGMENTS")
+          fi
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "Segments to render: $ids" >> "$GITHUB_STEP_SUMMARY"
+
+  render:
+    needs: plan
+    if: needs.plan.outputs.ids != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        id: ${{ fromJSON(needs.plan.outputs.ids) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: films/02-black-and-white/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: System packages (ffmpeg, Noto Sans CJK incl. Black)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-noto-cjk fonts-noto-cjk-extra
+          ls /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc /usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc
+      - run: pip install -q fonttools brotli numpy soundfile
+      - run: npm ci
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('films/02-black-and-white/package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Render ${{ matrix.id }}
+        run: node tools/standalone.mjs ${{ matrix.id }}
+      - name: Contact sheet
+        run: node tools/render.mjs stills ${{ matrix.id }} 1,5,10,15,19.5 270
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}
+          path: |
+            films/02-black-and-white/dist/segments/*.mp4
+            films/02-black-and-white/build/stills/${{ matrix.id }}_sheet.jpg
+          retention-days: 30
+
+  publish:
+    needs: [plan, render]
+    if: ${{ !cancelled() && needs.plan.outputs.ids != '[]' && (github.event_name == 'push' || inputs.publish) }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: Upload to the "segments" release
+        working-directory: .
+        run: |
+          shopt -s nullglob
+          files=(out/*/dist/segments/*.mp4 out/*/*.mp4)
+          [ ${#files[@]} -gt 0 ] || { echo "nothing rendered"; exit 1; }
+          gh release view segments >/dev/null 2>&1 || gh release create segments --title "黑白動態全書 · 72 segments" \
+            --notes "Each 20-second segment as a standalone film (1080×1920, 30 fps, own soundtrack). Updated automatically whenever a segment's source changes on main."
+          existing=$(gh release view segments --json assets --jq '.assets[].name')
+          for f in "${files[@]}"; do
+            name=$(basename "$f"); id=${name%%-*}
+            for old in $existing; do                       # a renamed title leaves an old eNN-*.mp4 behind: drop it
+              if [[ "$old" == "$id"-*.mp4 && "$old" != "$name" ]]; then gh release delete-asset segments "$old" -y; fi
+            done
+            gh release upload segments "$f" --clobber
+            echo "- $name" >> "$GITHUB_STEP_SUMMARY"
+          done

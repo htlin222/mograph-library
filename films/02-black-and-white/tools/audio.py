@@ -35,4 +35,5 @@ for it in range(5):
     g += -14.0 - I
 I, P = run(g, 'build/music.wav')
 print(f'final integrated {I:.2f} LUFS, true peak {P:.2f} dBTP, gain {g:+.2f} dB', flush=True)
-json.dump({'gain': 10 ** (g / 20), 'lufs': I, 'truePeak': P}, open('build/gain.json', 'w'))
+for f in ('build/gain.json', 'tools/gain.json'):  # tools/ copy is committed: CI and standalone films use it
+    json.dump({'gain': 10 ** (g / 20), 'lufs': I, 'truePeak': P}, open(f, 'w'))
