@@ -3,7 +3,7 @@
    · one deterministic 1 kHz simulation per ball (gravity + quadratic air drag + restitution), run once
    · every contact is retimed onto an exact frame, so the squash frame is always the frame that touches the ground
    · squash / stretch is one continuous function of the distance to the nearest contact — never a mode switch
-   · a bounce lower than 2 px ends the motion (no sub-pixel chatter); all balls rest before the cycle restarts,
+   · a hop shorter than 4 frames ends the motion (real micro-bounces read as jitter at 30 fps); all balls rest before the cycle restarts,
      and the replay is an eased lift back to the top, not a teleport */
 const GROUND = 860, CYCLE = 4, LIFT = 0.45, DROP = 600, CW = 2 / 30;   // contact window: the frames on either side of contact are neutral
 /* Real-world scale: the drop is 1.00 m, so 600 px = 1 m and every ball falls with the same g = 9.81 m/s².
@@ -24,7 +24,7 @@ function simulate(b) {
     v += (-b.g - b.drag * v * Math.abs(v)) * dt; h += v * dt;
     if (h <= 0 && v < 0) {
       const impact = -v; h = 0; v = impact * b.e; C.push([(i + 1) * dt, impact]);
-      if (v * v / (2 * b.g) < 2) { v = 0; rest = true; }          // next bounce would be < 2 px: stop
+      if (2 * v / b.g < 4 / 30) { v = 0; rest = true; }        // next hop would last < 4 frames: at 30 fps that reads as jitter, stop
     }
   }
   // retime: each contact moves to the nearest frame; display time u maps piecewise-linearly onto sim time
@@ -55,7 +55,7 @@ function ballAt(u, b) {
 M.def({
   id: 'e01', num: 1, ch: 1, title: '時距與間距', en: 'TIMING & SPACING', dur: 20, ground: 'dark',
   prompt: '三顆球從同一高度落下：橡膠球、保齡球、氣球。不准改造型，只准改時距與間距，讓觀眾光看動作就分得出材質；每顆球留下每一格的位置點。',
-  how: ['同樣 1 m、同樣 g 9.81：輕重同時落地，差在反彈與阻力', '實測：Super Ball e 0.78；氣球終端速度 1.3 m/s', '著地那一格才壓扁；彈不到 2 px 就停，全部停穩才重播'],
+  how: ['同樣 1 m、同樣 g 9.81：輕重同時落地，差在反彈與阻力', '實測：Super Ball e 0.78；氣球終端速度 1.3 m/s', '著地那一格才壓扁；跳不滿 4 格就停，全部停穩才重播'],
   practice: '只改時距，做出「緊張」與「慵懶」兩種走路。',
   cues: [0, 4, 8, 12, 16].flatMap(c => [{ t: c + BALLS[1].sim.first, type: 'thud', v: 0.9 }, { t: c + BALLS[0].sim.first, type: 'pop', v: 0.6 }]),
   frame(ctx, t, s) {
