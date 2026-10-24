@@ -14,7 +14,7 @@
 
 | 物體 | 參數 | 值 | 出處 | 用在 |
 |---|---|---|---|---|
-| 重力 | g | 9.81 m/s² | 標準重力 | e01 |
+| 重力 | g | 9.81 m/s² | 標準重力 | e01、e13 |
 | Super Ball × 花崗岩（25° 入射） | e | 0.78 | Cross, *Enhancing the bounce of a ball*（表 I） | e01 橡膠球 |
 | 高爾夫球 × 花崗岩（25° 入射） | e | 0.87 | 同上 | — |
 | 籃球（FIBA 規格） | 1.8 m 落下，反彈 1.2–1.4 m | e ≈ 0.82–0.88 | FIBA 規格（經 Topend Sports 轉引） | — |
@@ -24,6 +24,13 @@
 | 各種球 × 混凝土（92 cm 落下） | e | 高爾夫 0.86、撞球 0.80、手球 0.75、網球 0.71、玻璃彈珠 0.66、木球 0.60、鋼珠 0.60 | The Physics Factbook | — |
 | 乳膠氣球（加一枚硬幣，總重 4.22 g，截面 0.0347 m²） | v_t | 1.875 m/s | 學生實驗（Hershberger） | 推算 |
 | 一般派對氣球（約 3 g、直徑約 26 cm） | v_t | ≈ 1.3 m/s | 由上一列反推 C_d ≈ 0.57，代入 v_t = √(2mg ÷ ρC_dA)，ρ = 1.2 kg/m³ | e01 氣球 |
+| 木 × 木 | μ（靜／動） | 0.5 / 0.3（另一表：靜 0.25–0.5） | OpenStax 表 1；Engineering ToolBox | e13 木塊、字母、盒壁 |
+| 橡膠 × 乾混凝土 | μ（靜／動） | 1.0 / 0.7 | OpenStax 表 1 | e13 橡膠球 |
+| 金屬 × 木 | μ（靜／動） | 0.5 / 0.3 | OpenStax 表 1 | e13 鋼球 |
+| 鋼 × 鋼（乾） | μ（靜／動） | 0.6 / 0.3（另一表：靜 0.5–0.8） | OpenStax 表 1；Engineering ToolBox | — |
+| 木球 × 混凝土 | e | 0.60 | The Physics Factbook | e13 木塊 |
+| 鋼珠 × 混凝土 | e | 0.60 | The Physics Factbook | e13 鋼球 |
+| 鋼 ／ 木 | 密度 | 7.85 ／ 約 0.7 g/cm³ | 常用材料值 | e13 |
 | 保齡球 × 地板 | e | ≈ 0.15 | **估計**，查無公開實測 | e01 保齡球 |
 | 氣球 × 地板 | e | ≈ 0.5 | **估計** | e01 氣球 |
 
@@ -35,9 +42,16 @@
 - ITF, Ball approval tests（254 cm 落下、花崗岩台面） — https://m.itftennis.com/media/2100/balls-ball-approval-tests.pdf
 - The Physics Factbook, Coefficient of Restitution — https://hypertextbook.com/facts/2006/restitution.shtml
 - Hershberger, terminal velocity of a balloon — https://tuhsphysics.ttsd.k12.or.us/Research/IB14/Hershberger
+- OpenStax（UCF 版）, Friction, Table 1 — https://pressbooks.online.ucf.edu/phy2054lt/?p=295
+- Engineering ToolBox, Friction coefficients — https://engineeringtoolbox.com/friction-coefficients-d_778.html
+
+## 用在 matter.js（e13）時要注意
+
+- matter.js 的重力單位是 px/ms²：`gravity.scale = 9.81 × (px/m) ÷ 10⁶`。e13 盒寬 960 px = 2 m，所以是 0.00471；舊版用 0.0019，只有真實重力的 40%，所以看起來輕飄飄。
+- 兩物體接觸時，摩擦取兩者的**較小值**、恢復係數取兩者的**較大值**。盒壁的恢復係數設 0，才不會把每樣東西都變彈。
+- `friction` 對應的是動摩擦係數，所以表中取「動」那一欄。
 
 ## 待補
 
 - 保齡球掉在木地板或合成球道上的恢復係數（目前是估計值）
 - 各種球的接觸時間（毫秒級）——用來決定動畫要誇張多少
-- e13 剛體物理（matter.js）的摩擦、恢復係數、密度，應該對照這張表重新設定

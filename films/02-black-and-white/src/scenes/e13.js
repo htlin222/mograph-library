@@ -7,7 +7,16 @@ function tag(ctx, i, zh, en, a) {
   text(ctx, en, 116 + w, 86, { size: 18, family: F.mono, spacing: 3, alpha: 0.5 * a });
 }
 const HZ = 240, BX0 = 60, BY0 = 130, BX1 = 1020, BY1 = 950, WORD = 'MATTER';
-const GS = 0.0019;
+/* real scale: the box is 960 px = 2.00 m wide, so 480 px = 1 m and g = 9.81 m/s² = 0.00471 px/ms² (matter.js units).
+   (The first version used 0.0019 — 40 % of real gravity — which is why everything looked floaty.)
+   Materials use measured values, see docs/physics-reference.md. matter.js combines a pair with
+   friction = min(a, b) and restitution = max(a, b). Densities are relative (g/cm³ × 0.001). */
+const PXM = 480, GS = 9.81 * PXM / 1e6;
+const MAT = {
+  wood: { density: 0.0007, friction: 0.3, restitution: 0.6, frictionAir: 0.0005 },     // μk wood–wood 0.3; wooden ball on concrete e 0.60
+  rubber: { density: 0.0011, friction: 0.7, restitution: 0.78, frictionAir: 0.0005 },  // μk rubber 0.7; Super Ball e 0.78
+  steel: { density: 0.00785, friction: 0.3, restitution: 0.6, frictionAir: 0.0002 },   // 7.85 g/cm³; steel ball on concrete e 0.60
+};
 /* gravity direction (angle, 90° = down) as a pure function of time */
 function gAng(t) {
   if (t < 12) return Math.PI / 2;
@@ -19,9 +28,9 @@ let eng, bodies, spawns, glyph = {};
 const S = M.def({
   id: 'e13', num: 13, ch: 2, title: '剛體物理', en: 'RIGID BODIES', dur: 20, ground: 'light',
   prompt: '用 matter.js 以 240 Hz 固定步長模擬：方塊和圓先落下堆疊，6 秒掉下 MATTER 六個字母（碰撞體用方框並畫出虛線），9.5 秒一顆重球從左側高速撞進堆裡；12 秒重力反轉，14 秒起重力轉一圈半，所有東西在盒子裡翻滾。黑白。',
-  how: ['Engine.update 每步 1/240 秒，畫面每格跑 8 步', '字母用矩形碰撞體，渲染形狀不等於碰撞形狀', 'engine.gravity 的 x、y 隨時間旋轉，盒子當牆'],
-  practice: '把恢復係數從 0.2 調到 0.9，看堆疊會不會塌。',
-  cues: [{ t: 6, type: 'tick' }, { t: 9.75, type: 'impact', v: 0.8 }, { t: 12, type: 'whoosh', dur: 0.5 }, { t: 12.45, type: 'thud', v: 0.9 }, { t: 14.2, type: 'riser', t1: 16 }],
+  how: ['比例尺：盒寬 2 m，g 9.81 m/s²；每步 1/240 秒，每格 8 步', '實測材質：木 μ 0.3、e 0.6；橡膠 e 0.78；鋼 7.85 g/cm³', '字母用矩形碰撞體；gravity 的 x、y 隨時間旋轉'],
+  practice: '把鋼球換成同大小的木球（密度 0.7），撞擊差多少？',
+  cues: [{ t: 6, type: 'tick' }, { t: 9.55, type: 'impact', v: 0.8 }, { t: 12, type: 'whoosh', dur: 0.5 }, { t: 12.55, type: 'thud', v: 0.9 }, { t: 14.2, type: 'riser', t1: 16 }],
   init() {
     for (const ch of new Set(WORD)) {
       const gl = glyphAt(ch, 100, 820), sc = 0.2; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -32,7 +41,7 @@ const S = M.def({
   reset() {
     const { Engine, Bodies, Composite } = Matter;
     eng = Engine.create({ enableSleeping: false }); eng.gravity.scale = GS; eng.positionIterations = 8; eng.velocityIterations = 6;
-    const wall = (x, y, w, h) => Bodies.rectangle(x, y, w, h, { isStatic: true, friction: 0.5 });
+    const wall = (x, y, w, h) => Bodies.rectangle(x, y, w, h, { isStatic: true, friction: MAT.wood.friction, restitution: 0 });
     Composite.add(eng.world, [wall((BX0 + BX1) / 2, BY1 + 100, 2000, 200), wall((BX0 + BX1) / 2, BY0 - 100, 2000, 200), wall(BX0 - 100, 540, 200, 2000), wall(BX1 + 100, 540, 200, 2000)]);
     bodies = []; spawns = [];
     const r = rng(1313);
@@ -50,13 +59,12 @@ const S = M.def({
       const tt = st + dt;
       while (spawns.length && spawns[0].t <= tt) {
         const sp = spawns.shift(); let b;
-        const o = { restitution: 0.2, friction: 0.4, frictionAir: 0.004 };
-        if (sp.kind === 'box') b = Bodies.rectangle(sp.x, sp.y, sp.s * sp.w, sp.s, o);
-        else if (sp.kind === 'circ') b = Bodies.circle(sp.x, sp.y, sp.s, o);
-        else if (sp.kind === 'glyph') { const gd = glyph[sp.ch]; b = Bodies.rectangle(sp.x, sp.y, gd.w, gd.h, o); }
-        else { b = Bodies.circle(sp.x, sp.y, sp.s, Object.assign({}, o, { density: 0.02, restitution: 0.3 })); }
+        if (sp.kind === 'box') b = Bodies.rectangle(sp.x, sp.y, sp.s * sp.w, sp.s, { ...MAT.wood });          // wooden blocks
+        else if (sp.kind === 'circ') b = Bodies.circle(sp.x, sp.y, sp.s, { ...MAT.rubber });                   // solid rubber balls
+        else if (sp.kind === 'glyph') { const gd = glyph[sp.ch]; b = Bodies.rectangle(sp.x, sp.y, gd.w, gd.h, { ...MAT.wood }); }
+        else { b = Bodies.circle(sp.x, sp.y, sp.s, { ...MAT.steel }); }                                       // steel ball
         Body.setAngle(b, sp.a || 0);
-        if (sp.kind === 'ball') Body.setVelocity(b, { x: 34, y: -6 });
+        if (sp.kind === 'ball') Body.setVelocity(b, { x: 34, y: -6 });          // per 1/60 s: 4.3 m/s
         b.sp = sp; Composite.add(eng.world, b); bodies.push(b);
       }
       const a = gAng(tt); eng.gravity.x = Math.cos(a); eng.gravity.y = Math.sin(a);
@@ -91,8 +99,8 @@ const S = M.def({
     /* ball velocity streak before impact */
     if (t > BALL_T - 0.4 && t < BALL_T + 0.6) {
       const ba = 1 - ease(E.inCubic, BALL_T + 0.2, BALL_T + 0.6, t);
-      if (t < BALL_T) { const k = ease(E.outCubic, BALL_T - 0.4, BALL_T, t); text(ctx, '重球 density × 20', BX0 + 30, BY1 - 360, { size: 22, family: F.tc, alpha: k }); ctx.fillStyle = fg(k); ctx.fillRect(BX0 + 30, BY1 - 345, 220 * k, 3); }
-      else text(ctx, '重球 density × 20', BX0 + 30, BY1 - 360, { size: 22, family: F.tc, alpha: ba });
+      if (t < BALL_T) { const k = ease(E.outCubic, BALL_T - 0.4, BALL_T, t); text(ctx, '鋼球 7.85 g/cm³ · 木頭 0.7', BX0 + 30, BY1 - 360, { size: 22, family: F.tc, alpha: k }); ctx.fillStyle = fg(k); ctx.fillRect(BX0 + 30, BY1 - 345, 220 * k, 3); }
+      else text(ctx, '鋼球 7.85 g/cm³ · 木頭 0.7', BX0 + 30, BY1 - 360, { size: 22, family: F.tc, alpha: ba });
     }
     if (colA > 0) text(ctx, '虛線 = 碰撞體（矩形）', BX1 - 24, BY0 + 46, { size: 22, family: F.tc, align: 'right', alpha: colA * 0.8 });
     /* gravity dial */
@@ -106,7 +114,7 @@ const S = M.def({
     const ph = t < 6 ? 0 : t < BALL_T ? 1 : t < 12 ? 2 : t < 14 ? 3 : 4, T0 = [0, 6, BALL_T, 12, 14];
     const tags = [['落下與堆疊', 'FALL & STACK'], ['字母碰撞體', 'COLLIDERS'], ['重球撞擊', 'IMPACT'], ['重力反轉', 'GRAVITY FLIP'], ['重力旋轉', 'ROTATING GRAVITY']];
     tag(ctx, ph + 1, tags[ph][0], tags[ph][1], ph === 0 ? 1 : ease(E.outCubic, T0[ph], T0[ph] + 0.3, t));
-    text(ctx, `240 Hz · ${bodies.length} bodies · restitution 0.2 · friction 0.4`, 60, 1000, { size: 22, family: F.mono, alpha: 0.6 });
+    text(ctx, `g 9.81 m/s² · box 2 m · wood e .60 μ .30 · rubber e .78 μ .70 · ${bodies.length} bodies`, 60, 1000, { size: 20, family: F.mono, alpha: 0.6 });
     const f2 = v => (Math.abs(v) < 0.005 ? 0 : v).toFixed(2);
     text(ctx, `g = (${f2(Math.cos(ga))}, ${f2(Math.sin(ga))})`, 60, 1036, { size: 22, family: F.mono, weight: 500 });
     text(ctx, `step ${S.sim ? S.sim.n : 0}`, 1020, 1036, { size: 22, family: F.mono, align: 'right', alpha: 0.6 });
