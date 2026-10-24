@@ -7,6 +7,7 @@
 | | 說明 |
 |---|---|
 | [`docs/learning-map/`](docs/learning-map/) | 動態設計學習地圖：八個分支、描述公式、大詞索引、五份語彙、提示詞實戰、黑白動態全書 |
+| [`docs/physics-reference.md`](docs/physics-reference.md) | 物理參數表：恢復係數、終端速度等實測值與出處 |
 | [`docs/prompt-collection-analysis/`](docs/prompt-collection-analysis/) | 對 703 條公開 Opus 5.5 影片提示詞的分析腳本與資料 |
 | [`films/01-motion-in-code/`](films/01-motion-in-code/) | 《Motion, in Code》：12 種技法 × 6 秒，約 84 秒 |
 | [`films/02-black-and-white/`](films/02-black-and-white/) | 《黑白動態全書》：只用黑白示範 72 種技法 × 20 秒，附 Prompt／做法／練習，約 24 分 50 秒 |

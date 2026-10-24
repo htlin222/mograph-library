@@ -44,6 +44,12 @@ function marey(u) {
   return { x: PX0 + PVX * u, y: PGROUND - h - PR * sy, sx: 1 / sy, sy, rot, h };
 }
 
+/* times of the last n onion skins: fixed even frames before the current one, oldest first */
+function skinTimes(t, n) {
+  const f = Math.round(t * FPS), base = f - (f % 2 === 0 ? 2 : 1), out = [];
+  for (let k = n - 1; k >= 0; k--) { const g = base - 2 * k; if (g >= 0) out.push(g / FPS); }
+  return out;
+}
 function ball(ctx, b, r, mode, a = 1) {
   ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot); ctx.scale(b.sx, b.sy);
   ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU);
@@ -55,7 +61,7 @@ function ball(ctx, b, r, mode, a = 1) {
 M.def({
   id: 'e04', num: 4, ch: 1, title: '擠壓與伸展', en: 'SQUASH & STRETCH', dur: 20, ground: 'light',
   prompt: '上下兩條跑道，同一顆彈跳球：上面是不變形的剛體，下面落地壓扁、空中沿速度方向拉長，面積守恆，每 2 格留洋蔥皮殘影。再並排比較「面積守恆」與「只壓扁」，最後一顆球跨畫面彈跳衰減成連續攝影。',
-  how: ['形變 e 隨速度變大；sy = 1 + e、sx = 1 ÷ sy，面積不變', '橢圓長軸轉向速度方向；著地前後 60 ms 改成壓扁', '殘影 = 把 t − 2k/30 代回同一個 f(t) 重畫'],
+  how: ['形變 e 隨速度變大；sy = 1 + e、sx = 1 ÷ sy，面積不變', '橢圓長軸轉向速度方向；著地前後 60 ms 改成壓扁', '殘影固定在偶數格：把那一格的時間代回同一個 f(t)'],
   practice: '把壓扁量調到 0.8，看看球什麼時候變成果凍。',
   cues: [1, 2, 3, 4, 5, 6, 7].map(t => ({ t, type: 'pop', v: 0.45 }))
     .concat([9, 10, 11, 12, 13].map(t => ({ t, type: 'thud', v: 0.55 })))
@@ -79,13 +85,13 @@ M.def({
       text(ctx, L.tc, 48, top + 34, { size: 36, family: F.tcBlack, weight: 900 });
       text(ctx, L.en, 48, top + 66, { size: 20, family: F.mono, alpha: 0.55 });
       ctx.fillStyle = fg(1); ctx.fillRect(40, L.ground, SW - 80, 2);
-      // onion skins: every 2 frames, 12 back
+      // onion skins on the even frames of the film: each ghost stays where it was drawn and fades with age.
+      // (Skins at t − 2k/30 would sit on odd frames every other frame — the whole trail strobes.)
       const now = laneBall(t, L.ground, r, H, vx, L.soft);
-      for (let k = 12; k >= 1; k--) {
-        const tt = t - k * 2 / FPS; if (tt < 0) continue;
+      for (const tt of skinTimes(t, 12)) {
         const b = laneBall(tt, L.ground, r, H, vx, L.soft);
         if (Math.abs(b.x - now.x) > 400) continue;
-        ball(ctx, b, r, 'line', 0.5 * (1 - k / 13));
+        ball(ctx, b, r, 'line', 0.5 * (1 - (t - tt) * FPS / 26));
       }
       // contact shadow
       const hh = clamp(now.h / H);
@@ -109,7 +115,7 @@ M.def({
       const f = tt => { const b = laneBall(tt, ground, r, H, 0, C.soft, C.area); b.x = C.x; return b; };
       text(ctx, C.tc, C.x, 160, { size: 38, family: F.tcBlack, weight: 900, align: 'center' });
       text(ctx, C.en, C.x, 196, { size: 20, family: F.mono, align: 'center', alpha: 0.55 });
-      for (let k = 10; k >= 1; k--) ball(ctx, f(t - k * 2 / FPS), r, 'line', 0.4 * (1 - k / 11));
+      for (const tt of skinTimes(t, 10)) ball(ctx, f(tt), r, 'line', 0.4 * (1 - (t - tt) * FPS / 22));
       // the contact frame, held as a dashed silhouette: this is where the rule shows
       const c = f(Math.round(t));
       if (C.soft) { ctx.save(); ctx.setLineDash([6, 6]); ctx.strokeStyle = fg(0.8); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(c.x, c.y, r * c.sx, r * c.sy, 0, 0, TAU); ctx.stroke(); ctx.restore(); }

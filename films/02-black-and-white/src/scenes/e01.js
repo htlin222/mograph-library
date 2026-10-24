@@ -6,11 +6,15 @@
    · a bounce lower than 2 px ends the motion (no sub-pixel chatter); all balls rest before the cycle restarts,
      and the replay is an eased lift back to the top, not a teleport */
 const GROUND = 860, CYCLE = 4, LIFT = 0.45, DROP = 600, CW = 2 / 30;   // contact window: the frames on either side of contact are neutral
+/* Real-world scale: the drop is 1.00 m, so 600 px = 1 m and every ball falls with the same g = 9.81 m/s².
+   Heavy and light land together in vacuum; what tells the materials apart is restitution and air drag (measured
+   values, see docs/physics-reference.md). Drag is quadratic, a = −g − (g / v_t²)·v|v|, from the terminal speed v_t. */
+const PX_PER_M = DROP / 1.0, G = 9.81 * PX_PER_M;
 const BALLS = [
-  { key: 'rubber', name: '橡膠球', en: 'RUBBER', r: 62, g: 3200, drag: 0, e: 0.68, S: 0.22, Q: 0.26, note: 'e 0.68' },
-  { key: 'bowling', name: '保齡球', en: 'BOWLING', r: 74, g: 3600, drag: 0, e: 0.14, S: 0.03, Q: 0.07, note: 'e 0.14' },
-  { key: 'balloon', name: '氣球', en: 'BALLOON', r: 70, g: 1500, drag: 1500 / (280 * 280), e: 0.6, S: 0.02, Q: 0.22, note: '空氣阻力' },
-];
+  { key: 'rubber', name: '橡膠球', en: 'RUBBER', r: 62, e: 0.78, vt: 0, S: 0.22, Q: 0.26, note: 'e 0.78（實測）' },           // Super Ball on granite (Cross)
+  { key: 'bowling', name: '保齡球', en: 'BOWLING', r: 74, e: 0.15, vt: 0, S: 0.03, Q: 0.07, note: 'e ≈ 0.15（估計）' },       // no published floor value
+  { key: 'balloon', name: '氣球', en: 'BALLOON', r: 70, e: 0.5, vt: 1.3, S: 0.02, Q: 0.22, note: '終端速度 1.3 m/s' },        // latex balloon drop labs
+].map(b => ({ ...b, g: G, drag: b.vt ? G / Math.pow(b.vt * PX_PER_M, 2) : 0 }));
 /* simulate once: samples of height h (px above ground) and velocity v (px/s, up +) every ms; contacts [time, impact speed] */
 function simulate(b) {
   const dt = 0.001, H = [], V = [], C = []; let h = DROP, v = 0, rest = false;
@@ -51,13 +55,17 @@ function ballAt(u, b) {
 M.def({
   id: 'e01', num: 1, ch: 1, title: '時距與間距', en: 'TIMING & SPACING', dur: 20, ground: 'dark',
   prompt: '三顆球從同一高度落下：橡膠球、保齡球、氣球。不准改造型，只准改時距與間距，讓觀眾光看動作就分得出材質；每顆球留下每一格的位置點。',
-  how: ['恢復係數：橡膠 0.68、保齡球 0.14；氣球有空氣阻力，近乎等速落下', '每格畫一個點：點越密越慢，點越疏越快', '著地那一格才壓扁；彈不到 2 px 就停，全部停穩才重播'],
+  how: ['同樣 1 m、同樣 g 9.81：輕重同時落地，差在反彈與阻力', '實測：Super Ball e 0.78；氣球終端速度 1.3 m/s', '著地那一格才壓扁；彈不到 2 px 就停，全部停穩才重播'],
   practice: '只改時距，做出「緊張」與「慵懶」兩種走路。',
   cues: [0, 4, 8, 12, 16].flatMap(c => [{ t: c + BALLS[1].sim.first, type: 'thud', v: 0.9 }, { t: c + BALLS[0].sim.first, type: 'pop', v: 0.6 }]),
   frame(ctx, t, s) {
     const cyc = Math.floor(t / CYCLE), u = t - cyc * CYCLE;
     // ground and columns
     ctx.fillStyle = fg(0.9); ctx.fillRect(60, GROUND, SW - 120, 2);
+    // real-world scale: the drop is one metre
+    ctx.fillStyle = fg(0.35); ctx.fillRect(28, GROUND - DROP, 1, DROP); ctx.fillRect(22, GROUND - DROP, 13, 1); ctx.fillRect(22, GROUND - 1, 13, 1);
+    ctx.save(); ctx.translate(18, GROUND - DROP / 2); ctx.rotate(-Math.PI / 2);
+    text(ctx, '1.00 m · g 9.81 m/s²', 0, 0, { size: 16, family: F.mono, align: 'center', alpha: 0.5 }); ctx.restore();
     BALLS.forEach((b, i) => {
       const cx = 180 + i * 360, top = GROUND - DROP - b.r;
       // column label
