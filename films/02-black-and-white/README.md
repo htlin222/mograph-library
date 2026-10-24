@@ -28,7 +28,7 @@ catalog/           72 段的 Prompt / 做法 / 練習（catalog.json 與各章 m
 CONTRACT.md        場景 API 與 72 個概念的規格（寫新段落或交給 AI 改之前先讀）
 ```
 
-`build/`、`dist/` 都是產物，不進 git；成片放在 GitHub Releases。
+`build/`、`dist/` 都是產物，不進 git。
 
 ## 環境
 

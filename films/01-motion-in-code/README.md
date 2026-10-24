@@ -31,4 +31,4 @@ node tools/render.mjs stills s07 1,3,5        # 單段縮圖 → build/stills/s0
 node tools/render.mjs video s07 && npm run mux # 單段重算後重新串接
 ```
 
-成片（`Motion-in-Code_Opus5.5.mp4`）放在 GitHub Releases。
+成片不進 git，用上面的指令即可重新算出。
