@@ -1,0 +1,121 @@
+<meta charset="utf-8">
+<title>Motion, in Code</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one cinema stage. A 9:16 film centred on a warm-black ground, transport bar beneath. Single dark look by choice. */
+:root {
+  --ground: #0a0a0b; --panel: #131315; --line: #2a2a2e; --fg: #f1efe9; --dim: #8e8c86; --signal: #ff5a3c;
+  --mono: "JBMono", ui-monospace, "SF Mono", Menlo, monospace;
+  --tc: "NotoTC", "PingFang TC", "Noto Sans TC", sans-serif;
+  color-scheme: dark;
+}
+/*FONTFACES*/
+html, body { height: 100%; }
+body { background: var(--ground); color: var(--fg); font-family: var(--tc); margin: 0; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.stage { height: 100%; display: grid; grid-template-rows: 1fr auto; justify-items: center; gap: 14px; padding-block: 14px; box-sizing: border-box; }
+.filmwrap { width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; container-type: size; }
+.film { position: relative; aspect-ratio: 9 / 16; width: min(100cqw, calc(100cqh * 9 / 16)); }
+.film canvas { width: 100%; height: 100%; display: block; border-radius: 6px; background: #000; }
+.cover { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 60%, rgba(10,10,11,.25), rgba(10,10,11,.75)); border: 0; color: var(--fg); cursor: pointer; border-radius: 6px; font: inherit; }
+.cover span { display: inline-flex; align-items: center; gap: 12px; padding: 14px 22px; border: 1px solid rgba(241,239,233,.35); border-radius: 999px; background: rgba(10,10,11,.55); backdrop-filter: blur(8px); font-size: 15px; letter-spacing: .04em; }
+.cover span::before { content: ""; width: 0; height: 0; border-left: 11px solid var(--fg); border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+.cover:focus-visible span, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.bar { width: min(100%, 560px); display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.bar button { background: none; border: 1px solid var(--line); color: var(--fg); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.bar button:hover { border-color: var(--dim); }
+.bar svg { width: 14px; height: 14px; fill: currentColor; }
+.scrub { position: relative; height: 34px; cursor: pointer; touch-action: none; }
+.scrub .track { position: absolute; left: 0; right: 0; top: 16px; height: 2px; background: var(--line); }
+.scrub .fill { position: absolute; left: 0; top: 16px; height: 2px; background: var(--fg); width: 0; }
+.scrub .tick { position: absolute; top: 12px; width: 1px; height: 10px; background: var(--dim); opacity: .6; }
+.scrub .head { position: absolute; top: 11px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--fg); left: 0; }
+.chap { min-width: 7.5em; color: var(--fg); font-family: var(--tc); font-size: 13px; white-space: nowrap; }
+.status { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--dim); pointer-events: none; }
+@media (max-width: 480px) { .bar { grid-template-columns: auto 1fr auto; } .bar .time { display: none; } }
+@media (prefers-reduced-motion: reduce) { .cover span { backdrop-filter: none; } }
+</style>
+<div class="stage">
+  <div class="filmwrap"><div class="film" id="film">
+    <canvas id="out" width="1080" height="1920" aria-label="Motion, in Code — 12 段程式碼生成的動態效果"></canvas>
+    <button class="cover" id="cover" type="button" aria-label="播放（有聲）"><span>播放 · 有聲</span></button>
+    <div class="status" id="status"></div>
+  </div></div>
+  <div class="bar" id="bar">
+    <button id="play" type="button" aria-label="播放"><svg viewBox="0 0 14 14" id="ico"><path d="M3 1.5v11l9-5.5z"/></svg></button>
+    <div class="scrub" id="scrub" role="slider" aria-label="時間軸" tabindex="0"><div class="track"></div><div class="fill" id="fill"></div><div class="head" id="head"></div></div>
+    <div class="chap" id="chap">—</div>
+    <div class="time" id="time">0:00 / 0:00</div>
+  </div>
+</div>
+<script>/*LIBS*/</script>
+<script>/*APP*/</script>
+<script>
+(async function () {
+  const RECORD = /record/.test(location.search);
+  M.record = RECORD;
+  const canvas = document.getElementById('out');
+  await M.boot(canvas);
+  if (RECORD) {
+    document.body.style.padding = '0';
+    document.querySelector('.stage').replaceWith(canvas);
+    canvas.style.width = '270px'; canvas.style.height = '480px';
+    window.M = M; window.MUS = MUS;
+    M.renderFrame = i => { M.render(M.ctx, i / FPS); return true; };
+    M.frameURL = (i, q) => { M.render(M.ctx, i / FPS); return canvas.toDataURL(q ? 'image/jpeg' : 'image/png', q || undefined); };
+    M.readyFlag = true;
+    return;
+  }
+  /* ---------- player ---------- */
+  const $ = id => document.getElementById(id);
+  const ctx = M.ctx, T = M.duration;
+  let playing = false, t = 0, ac = null, src = null, t0 = 0, last = performance.now();
+  const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  const scrub = $('scrub');
+  M.timeline.filter(s => s.num).forEach(s => { const d = document.createElement('div'); d.className = 'tick'; d.style.left = (s.start / T * 100) + '%'; scrub.appendChild(d); });
+  const ui = () => {
+    const p = t / T; $('fill').style.width = (p * 100) + '%'; $('head').style.left = (p * 100) + '%';
+    const s = M.sceneAt(t); $('chap').textContent = s.num ? `${s.num}　${s.title}` : (s.label || '');
+    $('time').textContent = `${fmt(t)} / ${fmt(T)}`;
+    $('ico').innerHTML = playing ? '<path d="M3 2h3v10H3zM8 2h3v10H8z"/>' : '<path d="M3 1.5v11l9-5.5z"/>';
+    $('play').setAttribute('aria-label', playing ? '暫停' : '播放');
+  };
+  /* adaptive GL resolution for live playback (recording is always full-res) */
+  let ema = 16;
+  const adapt = ms => { ema = ema * 0.9 + ms * 0.1; if (ema > 40 && M.glScale > 0.4) M.glScale = Math.max(0.4, M.glScale - 0.05); else if (ema < 20 && M.glScale < 1) M.glScale = Math.min(1, M.glScale + 0.02); };
+  const draw = () => { const a = performance.now(); M.render(ctx, Math.min(t, T - 1 / FPS)); adapt(performance.now() - a); };
+  const musicReady = (async () => { try { $('status').textContent = '合成配樂中…'; await MUS.render(); $('status').textContent = ''; } catch (e) { $('status').textContent = ''; console.warn(e); } })();
+  const startAudio = async () => {
+    await musicReady; if (!MUS.buffer) return;
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)({ sampleRate: MUS.SR });
+    if (ac.state === 'suspended') await ac.resume();
+    if (!playing) return;
+    stopAudio(); src = ac.createBufferSource(); src.buffer = MUS.buffer; src.connect(ac.destination);
+    src.start(0, t); t0 = ac.currentTime - t;
+  };
+  const stopAudio = () => { if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; } };
+  const play = () => { if (t >= T - 0.05) t = 0; playing = true;
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)({ sampleRate: MUS.SR }); if (ac.state === 'suspended') ac.resume(); } catch (e) {} $('cover').hidden = true; last = performance.now(); ui();
+    startAudio().then(() => { if (!playing) stopAudio(); }); };
+  const pause = () => { playing = false; stopAudio(); ui(); };
+  $('cover').onclick = play; $('play').onclick = () => playing ? pause() : play();
+  canvas.onclick = () => playing ? pause() : play();
+  const seekTo = x => { const r = scrub.getBoundingClientRect(); t = clamp((x - r.left) / r.width) * T; draw(); ui(); if (playing) startAudio(); };
+  let drag = false;
+  scrub.onpointerdown = e => { drag = true; scrub.setPointerCapture(e.pointerId); seekTo(e.clientX); };
+  scrub.onpointermove = e => { if (drag) seekTo(e.clientX); };
+  scrub.onpointerup = () => { drag = false; };
+  scrub.onkeydown = e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const s = M.sceneAt(t), i = M.timeline.indexOf(s), j = clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, M.timeline.length - 1); t = M.timeline[j].start; draw(); ui(); if (playing) startAudio(); e.preventDefault(); } };
+  document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); playing ? pause() : play(); } });
+  const loop = now => {
+    if (playing) {
+      if (src && ac) t = ac.currentTime - t0; else t += (now - last) / 1000;
+      if (t >= T) { t = T; pause(); }
+      draw(); ui();
+    }
+    last = now; requestAnimationFrame(loop);
+  };
+  t = 43.2; draw(); t = 0; ui();   // poster frame: 07 liquid glass
+  requestAnimationFrame(loop);
+})();
+</script>

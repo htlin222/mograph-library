@@ -1,0 +1,147 @@
+<meta charset="utf-8">
+<title>黑白動態全書</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one cinema stage — a 9:16 film centred on black, a transport bar and a chapter strip below. Single black-and-white look by choice. */
+:root {
+  --ground: #0b0b0b; --line: #2b2b2b; --fg: #f2f2f0; --dim: #8a8a88;
+  --mono: "JBMono", ui-monospace, "SF Mono", Menlo, monospace;
+  --tc: "NotoTC", "PingFang TC", "Noto Sans TC", sans-serif;
+  color-scheme: dark;
+}
+/*FONTFACES*/
+html, body { height: 100%; }
+body { background: var(--ground); color: var(--fg); font-family: var(--tc); margin: 0; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.stage { height: 100%; display: grid; grid-template-rows: 1fr auto auto; justify-items: center; gap: 10px; padding-block: 12px; box-sizing: border-box; }
+.filmwrap { width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; container-type: size; }
+.film { position: relative; aspect-ratio: 9 / 16; width: min(100cqw, calc(100cqh * 9 / 16)); }
+.film canvas { width: 100%; height: 100%; display: block; border-radius: 4px; background: #000; }
+.cover { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(11,11,11,.45); border: 0; color: var(--fg); cursor: pointer; border-radius: 4px; font: inherit; }
+.cover span { display: inline-flex; align-items: center; gap: 12px; padding: 14px 22px; border: 1px solid rgba(242,242,240,.5); border-radius: 999px; background: rgba(11,11,11,.7); font-size: 15px; letter-spacing: .04em; }
+.cover span::before { content: ""; border-left: 11px solid var(--fg); border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+.cover:focus-visible span, button:focus-visible, select:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+.bar { width: min(100%, 560px); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.bar button { background: none; border: 1px solid var(--line); color: var(--fg); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.bar svg { width: 14px; height: 14px; fill: currentColor; }
+.scrub { position: relative; height: 34px; cursor: pointer; touch-action: none; }
+.scrub .track { position: absolute; left: 0; right: 0; top: 16px; height: 2px; background: var(--line); }
+.scrub .fill { position: absolute; left: 0; top: 16px; height: 2px; background: var(--fg); width: 0; }
+.scrub .tick { position: absolute; top: 12px; width: 1px; height: 10px; background: var(--dim); opacity: .7; }
+.scrub .head { position: absolute; top: 11px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--fg); left: 0; }
+.row2 { width: min(100%, 560px); display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.row2 select { width: 100%; min-width: 0; background: var(--ground); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: 13px var(--tc); }
+.time { font-family: var(--mono); font-size: 12px; color: var(--dim); white-space: nowrap; }
+.status { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--dim); pointer-events: none; }
+</style>
+<div class="stage">
+  <div class="filmwrap"><div class="film" id="film">
+    <canvas id="out" width="1080" height="1920" aria-label="黑白動態全書：72 種動態效果，每段 20 秒"></canvas>
+    <button class="cover" id="cover" type="button" aria-label="播放（有聲）"><span>播放 · 有聲</span></button>
+    <div class="status" id="status"></div>
+  </div></div>
+  <div class="bar">
+    <button id="play" type="button" aria-label="播放"><svg viewBox="0 0 14 14" id="ico"><path d="M3 1.5v11l9-5.5z"/></svg></button>
+    <div class="scrub" id="scrub" role="slider" aria-label="時間軸" tabindex="0"><div class="track"></div><div class="fill" id="fill"></div><div class="head" id="head"></div></div>
+    <div class="time" id="time">0:00</div>
+  </div>
+  <div class="row2">
+    <label for="jump" hidden>跳到段落</label>
+    <select id="jump"></select>
+    <div class="time" id="total">0:00</div>
+  </div>
+</div>
+<script>/*LIBS*/</script>
+<script>/*APP*/</script>
+<script>
+(async function () {
+  const RECORD = /record/.test(location.search);
+  M.record = RECORD;
+  const canvas = document.getElementById('out');
+  await M.boot(canvas);
+  if (RECORD) {
+    document.body.style.padding = '0';
+    document.querySelector('.stage').replaceWith(canvas);
+    canvas.style.width = '270px'; canvas.style.height = '480px';
+    window.M = M; window.MUS = MUS;
+    M.frameURL = (i, q) => { M.render(M.ctx, i / FPS); return canvas.toDataURL(q ? 'image/jpeg' : 'image/png', q || undefined); };
+    M.readyFlag = true;
+    return;
+  }
+  const $ = id => document.getElementById(id);
+  const ctx = M.ctx, T = M.duration;
+  let playing = false, t = 0, ac = null, src = null, t0 = 0, last = performance.now(), audioKey = null;
+  const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  $('total').textContent = fmt(T);
+  const scrub = $('scrub'), jump = $('jump');
+  M.timeline.filter(s => s.kind === 'card').forEach(s => { const d = document.createElement('div'); d.className = 'tick'; d.style.left = (s.start / T * 100) + '%'; scrub.appendChild(d); });
+  M.timeline.forEach((s, i) => { const o = document.createElement('option'); o.value = i; o.textContent = s.kind === 'seg' ? `${String(s.num).padStart(2, '0')}　${s.title}` : (s.label || (s.id === 'intro' ? '片頭' : '片尾')); jump.appendChild(o); });
+  const ui = () => {
+    const p = t / T; $('fill').style.width = (p * 100) + '%'; $('head').style.left = (p * 100) + '%';
+    $('time').textContent = fmt(t);
+    const idx = M.timeline.indexOf(M.sceneAt(t)); if (+jump.value !== idx) jump.value = idx;
+    $('ico').innerHTML = playing ? '<path d="M3 2h3v10H3zM8 2h3v10H8z"/>' : '<path d="M3 1.5v11l9-5.5z"/>';
+    $('play').setAttribute('aria-label', playing ? '暫停' : '播放');
+  };
+  let ema = 16;
+  const adapt = ms => { ema = ema * 0.9 + ms * 0.1; if (ema > 40 && M.glScale > 0.4) M.glScale = Math.max(0.4, M.glScale - 0.05); else if (ema < 20 && M.glScale < 1) M.glScale = Math.min(1, M.glScale + 0.02); };
+  const draw = () => { const a = performance.now(); M.render(ctx, Math.min(t, T - 1 / FPS)); adapt(performance.now() - a); };
+  /* audio: synthesize the current chapter on demand (cached), with the measured film gain + a limiter */
+  const getChunk = async gt => {
+    const c = MUS.chunkFor(gt);
+    if (!MUS.cache.has(c.key)) {
+      MUS.cache.set(c.key, (async () => {
+        $('status').textContent = '合成這一章的配樂…';
+        const [L, R] = await MUS.renderRange(c.t0, c.t1, 3);
+        const b = ac.createBuffer(2, L.length, MUS.SR); b.copyToChannel(L, 0); b.copyToChannel(R, 1);
+        $('status').textContent = ''; return { buf: b, t0: c.t0, t1: c.t1 };
+      })());
+    }
+    return { key: c.key, data: await MUS.cache.get(c.key) };
+  };
+  let out = null;
+  let starting = false;
+  const startAudio = async () => {
+    if (!ac || starting) return;
+    starting = true;
+    let key, data;
+    try { ({ key, data } = await getChunk(t)); } finally { starting = false; }
+    if (!playing) return;
+    stopAudio();
+    if (!out) { out = ac.createGain(); out.gain.value = MUS.LIVE_GAIN || 1; const lim = ac.createDynamicsCompressor(); lim.threshold.value = -1.5; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.1; out.connect(lim); lim.connect(ac.destination); }
+    src = ac.createBufferSource(); src.buffer = data.buf; src.connect(out);
+    const off = Math.max(0, t - data.t0); src.start(0, off); t0 = ac.currentTime - t; audioKey = key;
+    getChunk(data.t1 + 0.01).catch(() => {});      // prefetch next chapter
+  };
+  const stopAudio = () => { if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; } audioKey = null; };
+  const play = () => {
+    if (t >= T - 0.05) t = 0; playing = true; $('cover').hidden = true; last = performance.now(); ui();
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)({ sampleRate: MUS.SR }); if (ac.state === 'suspended') ac.resume(); } catch (e) {}
+    startAudio();
+  };
+  const pause = () => { playing = false; stopAudio(); ui(); };
+  $('cover').onclick = play; $('play').onclick = () => playing ? pause() : play();
+  canvas.onclick = () => playing ? pause() : play();
+  const seek = nt => { t = clamp(nt, 0, T - 0.05); draw(); ui(); if (playing) startAudio(); };
+  const seekX = x => { const r = scrub.getBoundingClientRect(); seek(clamp((x - r.left) / r.width) * T); };
+  let drag = false;
+  scrub.onpointerdown = e => { drag = true; scrub.setPointerCapture(e.pointerId); seekX(e.clientX); };
+  scrub.onpointermove = e => { if (drag) seekX(e.clientX); };
+  scrub.onpointerup = () => { drag = false; };
+  jump.onchange = () => seek(M.timeline[+jump.value].start + 0.001);
+  scrub.onkeydown = e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const i = M.timeline.indexOf(M.sceneAt(t)), j = clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, M.timeline.length - 1); seek(M.timeline[j].start + 0.001); e.preventDefault(); } };
+  document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); playing ? pause() : play(); } });
+  const loop = now => {
+    if (playing) {
+      if (src && ac) t = ac.currentTime - t0; else t += (now - last) / 1000;
+      if (t >= T) { t = T; pause(); }
+      else if (src && MUS.chunkFor(t).key !== audioKey) startAudio();
+      draw(); ui();
+    }
+    last = now; requestAnimationFrame(loop);
+  };
+  const first = M.timeline.find(s => s.kind === 'seg');
+  t = first ? first.start + 12 : 0; draw(); t = 0; ui();
+  requestAnimationFrame(loop);
+})();
+</script>

@@ -1,0 +1,22 @@
+{
+  "name": "mograph-01-motion-in-code",
+  "private": true,
+  "type": "module",
+  "description": "Motion, in Code — 12 motion-design techniques rendered entirely from code (Canvas2D + WebGL2 + Web Audio)",
+  "scripts": {
+    "prebuild": "mkdir -p build/seg build/stills dist && (test -f build/glyphs.json || python3 tools/glyphs.py MOTIN)",
+    "build": "node tools/build.mjs",
+    "stills": "node tools/render.mjs stills",
+    "video": "node tools/render.mjs video",
+    "audio": "node tools/render.mjs audio",
+    "mux": "node tools/render.mjs mux",
+    "all": "npm run build && npm run audio && node tools/render.mjs video all 2 && npm run mux"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "matter-js": "^0.20.0",
+    "playwright": "^1.56.0",
+    "sharp": "^0.34.0"
+  }
+}

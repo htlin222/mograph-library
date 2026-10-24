@@ -1,0 +1,16 @@
+<canvas id=c width=1080 height=1920></canvas><script>
+const c=document.getElementById('c');const gl=c.getContext('webgl2',{preserveDrawingBuffer:true});
+window.info = gl? gl.getParameter(gl.VERSION)+' | '+gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL||gl.RENDERER) : 'nogl';
+const vs=`#version 300 es
+in vec2 p;void main(){gl_Position=vec4(p,0,1);}`;
+const fs=`#version 300 es
+precision highp float;uniform float t;uniform vec2 R;out vec4 o;
+float map(vec3 p){p=mod(p,2.)-1.;return length(p)-.4;}
+void main(){vec2 uv=(gl_FragCoord.xy-R*.5)/R.y;vec3 ro=vec3(0,0,t),rd=normalize(vec3(uv,1));float d=0.;
+for(int i=0;i<96;i++){float h=map(ro+rd*d);if(h<.001)break;d+=h;}
+o=vec4(vec3(exp(-d*.1)),1);}`;
+function sh(t,s){const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x}
+const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);
+const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+window.frame=(t)=>{gl.uniform1f(gl.getUniformLocation(pr,'t'),t);gl.uniform2f(gl.getUniformLocation(pr,'R'),c.width,c.height);gl.drawArrays(4,0,3);const px=new Uint8Array(4);gl.readPixels(0,0,1,1,6408,5121,px);return px[0];};
+</script>

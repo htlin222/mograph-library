@@ -1,0 +1,25 @@
+{
+  "name": "mograph-02-black-and-white",
+  "private": true,
+  "type": "module",
+  "description": "72 black-and-white motion techniques × 20 s each, rendered from code (9:16, 1080×1920, 30 fps)",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "glyphs": "python3 tools/glyphs.py ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    "stills": "node tools/render.mjs stills",
+    "sheets": "node tools/sheets.mjs",
+    "video": "node tools/render.mjs video",
+    "audio": "node tools/render.mjs audio && python3 tools/audio.py",
+    "master": "bash tools/master.sh",
+    "retake": "bash tools/retake.sh",
+    "all": "npm run build && npm run audio && npm run build && node tools/render.mjs video all 2 && npm run master",
+    "prebuild": "mkdir -p build/seg build/stills build/audio dist && (test -f build/glyphs.json || npm run glyphs)"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "matter-js": "^0.20.0",
+    "playwright": "^1.56.0",
+    "sharp": "^0.34.0"
+  }
+}
