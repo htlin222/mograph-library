@@ -1,11 +1,35 @@
 /* 28 拆字交錯 — split a word into letters, give each its own delayed timeline.
    Presets: RISE · FLIP · SPIN · DROP(中文, random) — each with a live stagger diagram. Payoff: a diagonal-staggered paragraph. */
 const WORD = 'STAGGER', CAP = 686;
+/* A falling-and-bouncing ease that respects the frame grid. Penner's outBounce always spends its last 9 % on a
+   fourth hop: over 0.75 s that is a 2-frame, ~9 px twitch — jitter, not a bounce. Here the hops follow
+   restitution e and only as many are kept as last at least 4 frames each, then the letter rests. */
+function frameBounce(dur, e = 0.45) {
+  let n = 0;
+  for (let m = 4; m >= 0; m--) {
+    let s = 1; for (let k = 1; k <= m; k++) s += 2 * Math.pow(e, k);
+    if (m === 0 || 2 * Math.pow(e, m) / s * dur >= 4 / 30) { n = m; break; }
+  }
+  let s = 1; for (let k = 1; k <= n; k++) s += 2 * Math.pow(e, k);
+  const T0 = 1 / s;
+  return t => {
+    if (t >= 1) return 1;
+    if (t < T0) return (t / T0) * (t / T0);
+    let a = T0;
+    for (let k = 1; k <= n; k++) {
+      const w = 2 * Math.pow(e, k) * T0;
+      if (t < a + w) { const x = (t - a) / w * 2 - 1; return 1 - Math.pow(e, 2 * k) * (1 - x * x); }
+      a += w;
+    }
+    return 1;
+  };
+}
+const EASE28 = name => name === 'drop' ? frameBounce(0.75) : E[name];
 const PRE = [
   { t0: 0, name: 'RISE', zh: '上升', d: 0.05, dur: 0.6, ease: 'outExpo', order: 'L→R' },
   { t0: 4, name: 'FLIP', zh: '翻轉', d: 0.08, dur: 0.7, ease: 'outBack', order: 'L→R' },
   { t0: 8, name: 'SPIN', zh: '旋轉縮放', d: 0.07, dur: 0.7, ease: 'outBack', order: '中心→外' },
-  { t0: 12, name: 'DROP', zh: '落下', d: 0.09, dur: 0.75, ease: 'outBounce', order: '隨機' },
+  { t0: 12, name: 'DROP', zh: '落下', d: 0.09, dur: 0.75, ease: 'drop', order: '隨機' },
 ];
 const TCW = '逐字交錯登場';
 const PERM = (() => { const r = rng(28); return [...Array(TCW.length).keys()].map(i => [r(), i]).sort((a, b) => a[0] - b[0]).map(q => q[1]); })();
@@ -27,7 +51,7 @@ M.def({
       const tc = pi === 3;
       const chars = tc ? [...TCW] : [...WORD], n = chars.length;
       text(ctx, `0${pi + 1}  ${p.name} · ${p.zh}`, 44, 64, { size: 22, family: F.mono, weight: 500 });
-      text(ctx, `Δ ${Math.round(p.d * 1000)}ms · dur ${p.dur}s · ${p.ease} · 順序 ${p.order}`, SW - 44, 64, { size: 19, family: F.mono, align: 'right', alpha: 0.65 });
+      text(ctx, `Δ ${Math.round(p.d * 1000)}ms · dur ${p.dur}s · ${p.ease === 'drop' ? 'bounce e 0.45' : p.ease} · 順序 ${p.order}`, SW - 44, 64, { size: 19, family: F.mono, align: 'right', alpha: 0.65 });
       /* ---------- the word ---------- */
       const cap = tc ? 0 : Math.min(200, (930 - 60) / [...WORD].reduce((a, c) => a + glyphAt(c, 100, 820).adv, 0) * CAP), sc = cap / CAP, base = 390;
       let advs, tot;
@@ -36,7 +60,7 @@ M.def({
       let x = (SW - tot) / 2;
       chars.forEach((ch, i) => {
         const w = advs[i], dl = delayOf(p, i, n);
-        const k = clamp((u - dl) / p.dur), e = E[p.ease](k);
+        const k = clamp((u - dl) / p.dur), e = EASE28(p.ease)(k);
         const ko = clamp((u - 2.6 - dl * 0.6) / 0.35), eo = E.inCubic(ko);          // exit: same order, faster
         ctx.save();
         if (p.name === 'RISE') {
@@ -70,7 +94,7 @@ M.def({
         ctx.strokeStyle = fg(0.5); ctx.lineWidth = 1.5; ctx.strokeRect(bx, y + 4, bw, rh - 18);
         ctx.fillStyle = fg(1); ctx.fillRect(bx, y + 4, bw * k, rh - 18);
         // eased value as a tick inside the bar
-        if (k > 0 && k < 1) { const e = E[p.ease](k); ctx.fillStyle = fg(0.4); ctx.fillRect(bx, y + rh - 12, bw * clamp(e, 0, 1.2), 3); }
+        if (k > 0 && k < 1) { const e = EASE28(p.ease)(k); ctx.fillStyle = fg(0.4); ctx.fillRect(bx, y + rh - 12, bw * clamp(e, 0, 1.2), 3); }
         if (dl > 0) { ctx.fillStyle = fg(0.35); ctx.fillRect(gx, y + 14, bx - gx - 6, 1.5); }
       });
       const ph = gx + gw * clamp(u / span, 0, 1);
