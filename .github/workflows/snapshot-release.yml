@@ -1,0 +1,47 @@
+# Freeze the current 72 standalone segment films into their own versioned release.
+# The "segments" release is a rolling one (a segment's file is replaced whenever its source changes);
+# a snapshot keeps a fixed set you can link to. Nothing is re-rendered: the 72 MP4s are copied from "segments".
+#   Actions → Snapshot release → Run workflow → tag (e.g. v2), optional title and notes
+name: Snapshot release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'New release tag, e.g. v2'
+        required: true
+      title:
+        description: 'Release title (default: 黑白動態全書 · 72 segments · <tag>)'
+        required: false
+      notes:
+        description: 'Extra release notes'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      TITLE: ${{ inputs.title }}
+      NOTES: ${{ inputs.notes }}
+    steps:
+      - name: Copy the 72 MP4s from "segments" into a new release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "release $TAG already exists"; exit 1; fi
+          mkdir out
+          gh release download segments --pattern 'e*.mp4' --dir out
+          n=$(ls out/*.mp4 | wc -l)
+          [ "$n" -eq 72 ] || { echo "expected 72 segment files, found $n"; exit 1; }
+          sha=$(git ls-remote "https://github.com/$GH_REPO" refs/heads/main | cut -f1)
+          body="72 standalone segment films (1080×1920, 30 fps, 20 s each, own soundtrack), frozen from the rolling \"segments\" release.
+          Source: main @ ${sha:0:7}
+          ${NOTES}"
+          gh release create "$TAG" out/*.mp4 --target main \
+            --title "${TITLE:-黑白動態全書 · 72 segments · $TAG}" --notes "$body"
+          echo "Created release $TAG with $n files" >> "$GITHUB_STEP_SUMMARY"
