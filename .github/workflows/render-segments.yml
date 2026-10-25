@@ -2,6 +2,7 @@
 #  · push to main that touches films/02-black-and-white → only the changed segments
 #    (src/scenes/eNN.js → eNN; engine / music / tools → all 72), published to the "segments" release
 #  · Actions → "Render segments" → Run workflow → pick ids (all, or e.g. e01,e17) and whether to publish
+#  · every publish also cuts a versioned release vYYYY.MM.DD-<run> holding all 72 films (marked Latest)
 name: Render segments
 
 on:
@@ -11,6 +12,7 @@ on:
       - 'films/02-black-and-white/src/**'
       - 'films/02-black-and-white/tools/**'
       - 'films/02-black-and-white/package*.json'
+      - '.github/workflows/render-segments.yml'
   workflow_dispatch:
     inputs:
       segments:
@@ -105,13 +107,14 @@ jobs:
 
   publish:
     needs: [plan, render]
-    if: ${{ !cancelled() && needs.plan.outputs.ids != '[]' && (github.event_name == 'push' || inputs.publish) }}
+    if: ${{ !cancelled() && needs.render.result != 'failure' && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@v4
+        if: needs.plan.outputs.ids != '[]'
         with:
           path: out
       - name: Upload to the "segments" release
@@ -119,7 +122,7 @@ jobs:
         run: |
           shopt -s nullglob
           files=(out/*/dist/segments/*.mp4 out/*/*.mp4)
-          [ ${#files[@]} -gt 0 ] || { echo "nothing rendered"; exit 1; }
+          [ ${#files[@]} -gt 0 ] || { echo "nothing re-rendered this run"; exit 0; }
           gh release view segments >/dev/null 2>&1 || gh release create segments --title "黑白動態全書 · 72 segments" \
             --notes "Each 20-second segment as a standalone film (1080×1920, 30 fps, own soundtrack). Updated automatically whenever a segment's source changes on main."
           existing=$(gh release view segments --json assets --jq '.assets[].name')
@@ -131,3 +134,24 @@ jobs:
             gh release upload segments "$f" --clobber
             echo "- $name" >> "$GITHUB_STEP_SUMMARY"
           done
+      - name: Cut a versioned release with all 72 films
+        working-directory: .
+        env:
+          SHA: ${{ github.sha }}
+          RUN: ${{ github.run_number }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          # every successful publish also freezes the complete set: one release = 72 films for this commit
+          rm -rf all && mkdir all
+          gh release download segments --pattern 'e*.mp4' --dir all
+          n=$(ls all/*.mp4 | wc -l)
+          [ "$n" -eq 72 ] || { echo "segments release has $n films, not 72 — skipping the versioned release"; exit 1; }
+          tag="v$(date -u +%Y.%m.%d)-$RUN"
+          changed=$( (ls out/*/dist/segments/*.mp4 out/*/*.mp4 2>/dev/null || true) | xargs -r -n1 basename | sed 's/-.*//' | sort -u | tr '\n' ' ')
+          notes="黑白動態全書 — all 72 segments as standalone films (1080×1920, 30 fps, 20 s, own soundtrack).
+          Commit: ${SHA:0:7} — $(echo "${MSG:-manual run}" | head -1)
+          Re-rendered in this run: ${changed:-none}"
+          gh release create "$tag" all/*.mp4 --target "$SHA" --title "黑白動態全書 · 72 films · $tag" --notes "$notes" --latest
+          gh release edit segments --prerelease --latest=false   # the rolling release stays, but "Latest" points at the full set
+          echo "Created $tag with $n films" >> "$GITHUB_STEP_SUMMARY"

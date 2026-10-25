@@ -81,6 +81,7 @@ MUSIC=1 tools/retake.sh e17      # 改了 cues 或節拍時，連配樂一起重
 [`.github/workflows/render-segments.yml`](../../.github/workflows/render-segments.yml) 把每一段算成一部獨立的 20 秒影片：畫面加上它自己那 20 秒的配樂（沿用總片的 −14 LUFS 增益，`tools/gain.json`），檔名像 `e01-timing-and-spacing.mp4`，放在 Releases 的 **segments**。
 
 - **改了某段就自動重拍**：push 到 main 時，改了 `src/scenes/e17.js` 只重算 e17；改了引擎、配樂或工具（`engine.js`、`music.js`、`tools/*` 等）就重算全部 72 段。同一段的舊檔會被覆蓋。
+- **每次都出一個完整版本**：重算完成後，CI 會另外建立一個帶版本號的 release（`vYYYY.MM.DD-<run>`），裡面是當下完整的 72 部影片，並標為 Latest。**segments** 是滾動更新的工作區，版本 release 則固定不變，可以直接分享連結。
 - **手動**：Actions → Render segments → Run workflow，填 `all` 或 `e01,e17`。
 - 每段一個 job、最多 20 個同時跑；每個 job 另外留一張縮圖表（artifact，保留 30 天），方便在手機上檢查。
 
