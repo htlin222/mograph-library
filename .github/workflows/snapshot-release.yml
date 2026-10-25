@@ -1,10 +1,13 @@
 # Freeze the current 72 standalone segment films into their own versioned release.
 # The "segments" release is a rolling one (a segment's file is replaced whenever its source changes);
 # a snapshot keeps a fixed set you can link to. Nothing is re-rendered: the 72 MP4s are copied from "segments".
-#   Actions → Snapshot release → Run workflow → tag (e.g. v2), optional title and notes
+#   git tag v3 && git push origin v3          (the tag's annotation, if any, becomes the notes)
+#   or Actions → Snapshot release → Run workflow → tag, optional title and notes
 name: Snapshot release
 
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
@@ -26,10 +29,19 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      TAG: ${{ inputs.tag }}
+      TAG: ${{ inputs.tag || github.ref_name }}
       TITLE: ${{ inputs.title }}
       NOTES: ${{ inputs.notes }}
     steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          fetch-depth: 0
+      - name: Notes from the tag annotation
+        if: github.event_name == 'push'
+        run: |
+          msg=$(git tag -l --format='%(contents)' "$TAG" || true)
+          { echo 'TAGNOTES<<EOF'; echo "$msg"; echo 'EOF'; } >> "$GITHUB_ENV"
       - name: Copy the 72 MP4s from "segments" into a new release
         run: |
           set -euo pipefail
@@ -38,10 +50,10 @@ jobs:
           gh release download segments --pattern 'e*.mp4' --dir out
           n=$(ls out/*.mp4 | wc -l)
           [ "$n" -eq 72 ] || { echo "expected 72 segment files, found $n"; exit 1; }
-          sha=$(git ls-remote "https://github.com/$GH_REPO" refs/heads/main | cut -f1)
+          sha=${GITHUB_SHA}
           body="72 standalone segment films (1080×1920, 30 fps, 20 s each, own soundtrack), frozen from the rolling \"segments\" release.
           Source: main @ ${sha:0:7}
-          ${NOTES}"
-          gh release create "$TAG" out/*.mp4 --target main \
+          ${NOTES:-}${TAGNOTES:-}"
+          gh release create "$TAG" out/*.mp4 --target "$GITHUB_SHA" \
             --title "${TITLE:-黑白動態全書 · 72 segments · $TAG}" --notes "$body"
           echo "Created release $TAG with $n files" >> "$GITHUB_STEP_SUMMARY"
