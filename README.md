@@ -11,8 +11,11 @@
 | [`docs/prompt-collection-analysis/`](docs/prompt-collection-analysis/) | 對 703 條公開 Opus 5.5 影片提示詞的分析腳本與資料 |
 | [`films/01-motion-in-code/`](films/01-motion-in-code/) | 《Motion, in Code》：12 種技法 × 6 秒，約 84 秒 |
 | [`films/02-black-and-white/`](films/02-black-and-white/) | 《黑白動態全書》：只用黑白示範 72 種技法 × 20 秒，附 Prompt／做法／練習，約 24 分 50 秒 |
+| [`films/02-black-and-white/trailer/`](films/02-black-and-white/trailer/) | 16:9 預告片：同一套引擎重新排版、合成配樂與聲碼器人聲 |
+| [`films/02-black-and-white/catalog/`](films/02-black-and-white/catalog/) | 72 段的 Prompt／做法／練習，以及 72 則 Reels 文案 |
+| [`media/`](media/) | 成片 MP4（Git LFS） |
 
-成片 MP4 不進 git。黑白動態全書的 72 段由 GitHub Actions 自動算成獨立影片，放在 Releases 的 [segments](../../releases/tag/segments)；改了哪段、push 後就自動重拍哪段。
+成片在 [`media/`](media/)（Git LFS）：黑白動態全書全片、16:9 預告片、Motion, in Code。72 段各自獨立的影片由 GitHub Actions 自動算好放在 [Releases](../../releases)，改了哪段、push 後就自動重拍哪段並出新版本。
 
 ## 共同做法
 
